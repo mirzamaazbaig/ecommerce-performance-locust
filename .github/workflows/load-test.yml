@@ -1,0 +1,133 @@
+name: Load test (Locust)
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ecom_ref:
+        description: 'Branch, tag or SHA of the application repository to test'
+        required: false
+        default: ''
+      users:
+        description: 'Concurrent virtual users'
+        required: false
+        default: '30'
+      duration:
+        description: 'Run time, for example 45s or 3m'
+        required: false
+        default: '45s'
+
+concurrency:
+  group: load-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The load test expects the validated API (409 for sold-out products, 4xx for bad input), so test a version of
+  # the application that has those fixes. Change to the application's default branch once they are merged.
+  ECOM_REF: claude/optimistic-faraday-sh5c40
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out the load tests
+        uses: actions/checkout@v4
+
+      - name: Check out the application under test
+        uses: actions/checkout@v4
+        with:
+          repository: mirzamaazbaig/Ecom
+          ref: ${{ inputs.ecom_ref || env.ECOM_REF }}
+          path: app
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/server/package-lock.json
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test the threshold checker
+        run: python -m pytest -q
+
+      - name: Install the application's server
+        run: npm ci --prefix app/server
+
+      - name: Create and seed the database
+        working-directory: app/server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_db
+        run: |
+          node db/setup.js
+          node scripts/migrate.js
+          node scripts/seedProducts.js
+
+      - name: Start the API
+        working-directory: app/server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_db
+          SESSION_SECRET: ci-only-secret
+          NODE_ENV: test
+        run: |
+          nohup node index.js > ../../api.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5000/ > /dev/null && exit 0
+            sleep 1
+          done
+          echo "API did not start"; cat ../../api.log; exit 1
+
+      - name: Run the load test
+        run: >
+          locust -f locustfile.py --headless
+          -u ${{ inputs.users || '30' }} -r 10 -t ${{ inputs.duration || '45s' }}
+          --host http://localhost:5000/api
+          --csv results/run --html results/report.html --only-summary
+
+      - name: Check the thresholds
+        run: python tools/check_thresholds.py results/run_stats.csv thresholds.json
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-results
+          path: results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload API log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-log
+          path: api.log
+          if-no-files-found: ignore
+          retention-days: 14

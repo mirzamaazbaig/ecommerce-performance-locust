@@ -1,0 +1,11 @@
+{
+  "max_failure_rate": 0.01,
+  "min_total_requests": 200,
+  "default_p95_ms": 500,
+  "endpoints": {
+    "GET /products":                    { "p95_ms": 400 },
+    "GET /products/[id]":               { "p95_ms": 300 },
+    "POST /auth/register":              { "p95_ms": 1500 },
+    "POST /orders":                     { "p95_ms": 800 }
+  }
+}
