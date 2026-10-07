@@ -27,9 +27,8 @@ permissions:
   contents: read
 
 env:
-  # The load test expects the validated API (409 for sold-out products, 4xx for bad input), so test a version of
-  # the application that has those fixes. Change to the application's default branch once they are merged.
-  ECOM_REF: claude/optimistic-faraday-sh5c40
+  # The application branch under test. The tests assert the fixed behaviour, so the application's fixes must be merged here.
+  ECOM_REF: feature/modern-upgrade
 
 jobs:
   load-test:
