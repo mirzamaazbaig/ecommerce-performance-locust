@@ -1,5 +1,7 @@
 # E-Commerce API Load Tests: Python and Locust
 
+[![Load test](https://github.com/mirzamaazbaig/ecommerce-performance-locust/actions/workflows/load-test.yml/badge.svg)](https://github.com/mirzamaazbaig/ecommerce-performance-locust/actions/workflows/load-test.yml)
+
 Load and performance tests for the REST API of a React, Express and PostgreSQL online shop, written in Python with [Locust](https://locust.io). A run simulates a realistic mix of visitors, validates every response, and then **fails the build automatically** if the latency or error targets in [`thresholds.json`](thresholds.json) are missed.
 
 It complements the functional suites for the same API ([Playwright](https://github.com/mirzamaazbaig/Ecom), Newman, Selenium) with the non-functional side.
